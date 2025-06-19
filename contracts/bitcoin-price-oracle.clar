@@ -165,3 +165,91 @@
     (ok true)
   )
 )
+
+;; Claims proportional winnings from a resolved market
+(define-public (claim-winnings (market-id uint))
+  (let (
+      (market (unwrap! (map-get? markets market-id) ERR-NOT-FOUND))
+      (prediction (unwrap!
+        (map-get? user-predictions {
+          market-id: market-id,
+          user: tx-sender,
+        })
+        ERR-NOT-FOUND
+      ))
+    )
+    ;; Validate market status and claim eligibility
+    (asserts! (get resolved market) ERR-MARKET-CLOSED)
+    (asserts! (not (get claimed prediction)) ERR-ALREADY-CLAIMED)
+    
+    (let (
+        (winning-prediction (if (> (get end-price market) (get start-price market))
+          "up"
+          "down"
+        ))
+        (total-stake (+ (get total-up-stake market) (get total-down-stake market)))
+        (winning-stake (if (is-eq winning-prediction "up")
+          (get total-up-stake market)
+          (get total-down-stake market)
+        ))
+      )
+      ;; Verify user made the winning prediction
+      (asserts! (is-eq (get prediction prediction) winning-prediction)
+        ERR-INVALID-PREDICTION
+      )
+      
+      (let (
+          (winnings (/ (* (get stake prediction) total-stake) winning-stake))
+          (fee (/ (* winnings (var-get fee-percentage)) u100))
+          (payout (- winnings fee))
+        )
+        ;; Execute payout transfers
+        (try! (as-contract (stx-transfer? payout (as-contract tx-sender) tx-sender)))
+        (try! (as-contract (stx-transfer? fee (as-contract tx-sender) CONTRACT-OWNER)))
+        
+        ;; Mark prediction as claimed
+        (map-set user-predictions {
+          market-id: market-id,
+          user: tx-sender,
+        }
+          (merge prediction { claimed: true })
+        )
+        
+        (ok payout)
+      )
+    )
+  )
+)
+
+;; READ-ONLY FUNCTIONS
+
+;; Retrieves complete market information
+(define-read-only (get-market (market-id uint))
+  (map-get? markets market-id)
+)
+
+;; Retrieves user's prediction details for a specific market
+(define-read-only (get-user-prediction
+    (market-id uint)
+    (user principal)
+  )
+  (map-get? user-predictions {
+    market-id: market-id,
+    user: user,
+  })
+)
+
+;; Returns current contract STX balance
+(define-read-only (get-contract-balance)
+  (stx-get-balance (as-contract tx-sender))
+)
+
+;; Returns current platform configuration
+(define-read-only (get-platform-config)
+  {
+    oracle-address: (var-get oracle-address),
+    minimum-stake: (var-get minimum-stake),
+    fee-percentage: (var-get fee-percentage),
+    market-counter: (var-get market-counter),
+  }
+)
