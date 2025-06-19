@@ -253,3 +253,44 @@
     market-counter: (var-get market-counter),
   }
 )
+
+;; ADMINISTRATIVE FUNCTIONS
+
+;; Updates the authorized oracle address
+(define-public (set-oracle-address (new-address principal))
+  (begin
+    (asserts! (is-eq tx-sender CONTRACT-OWNER) ERR-OWNER-ONLY)
+    (asserts! (is-eq new-address new-address) ERR-INVALID-PARAMETER)
+    (ok (var-set oracle-address new-address))
+  )
+)
+
+;; Updates minimum stake requirement for predictions
+(define-public (set-minimum-stake (new-minimum uint))
+  (begin
+    (asserts! (is-eq tx-sender CONTRACT-OWNER) ERR-OWNER-ONLY)
+    (asserts! (> new-minimum u0) ERR-INVALID-PARAMETER)
+    (ok (var-set minimum-stake new-minimum))
+  )
+)
+
+;; Updates platform fee percentage on winnings
+(define-public (set-fee-percentage (new-fee uint))
+  (begin
+    (asserts! (is-eq tx-sender CONTRACT-OWNER) ERR-OWNER-ONLY)
+    (asserts! (<= new-fee u100) ERR-INVALID-PARAMETER)
+    (ok (var-set fee-percentage new-fee))
+  )
+)
+
+;; Withdraws accumulated platform fees
+(define-public (withdraw-fees (amount uint))
+  (begin
+    (asserts! (is-eq tx-sender CONTRACT-OWNER) ERR-OWNER-ONLY)
+    (asserts! (<= amount (stx-get-balance (as-contract tx-sender)))
+      ERR-INSUFFICIENT-BALANCE
+    )
+    (try! (as-contract (stx-transfer? amount (as-contract tx-sender) CONTRACT-OWNER)))
+    (ok amount)
+  )
+)
